@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的 Supabase 部落格</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        /* 額外微調一點點樣式 */
+        .post-card {
+            border: 1px solid var(--border); /* 使用 Water.css 的變數 */
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: var(--background-alt);
+        }
+        .new-badge {
+            color: red;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
+        <h1>我的 Supabase 部落格 🚀</h1>
+        <div id="auth-ui">
+            <span id="user-display" style="margin-right: 10px; font-weight: bold;"></span>
+            </div>
+    </header>
+
+    <details id="auth-forms">
+        <summary>點此展開：登入或註冊</summary>
+        <div style="margin-top: 20px; padding: 20px; border: 1px dashed #ccc;">
+            <h3>帳號管理</h3>
+            <input type="email" id="email" placeholder="電子信箱">
+            <input type="password" id="password" placeholder="密碼">
+            <br>
+            <button onclick="handleSignUp()">註冊</button>
+            <button onclick="handleSignIn()">登入</button>
+            <button onclick="handleSignOut()" style="background-color: #ef4444;">登出</button>
+        </div>
+    </details>
+
+    <hr>
+
+    <div id="post-section">
+        <h2>✏️ 發佈新文章</h2>
+        <input type="text" id="post-title" placeholder="文章標題">
+        <textarea id="post-content" placeholder="寫點什麼..." rows="4"></textarea>
+        <label for="post-image">上傳圖片：</label>
+        <input type="file" id="post-image" accept="image/*">
+        <button id="btn-publish" onclick="createPost()">發佈文章</button>
+    </div>
+
+    <hr>
+
+    <h2>📖 最新文章</h2>
+    <div id="post-container">載入中...</div>
+
+    <script>
+        // --- 設定區 ---
+        const SUPABASE_URL = 'https://llhiisczjckqcwdvugih.supabase.co'
+        const SUPABASE_KEY = 'sb_publishable_2y3NauD1KSlPs4U1k5D9KA_hD9OVGXj'
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+        // --- 1. 身分驗證邏輯 ---
+        
+        // 監聽狀態改變
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            const userDisplay = document.getElementById('user-display');
+            const authDetails = document.getElementById('auth-forms');
+            
+            if (session && session.user) {
+                userDisplay.innerText = `👋 哈囉，${session.user.email}`;
+                // 登入後自動收起登入框
+                authDetails.removeAttribute('open'); 
+            } else {
+                userDisplay.innerText = '尚未登入';
+            }
+        });
+
+        async function handleSignUp() {
+            const email = document.getElementById('email').value
+            const password = document.getElementById('password').value
+            const { error } = await supabaseClient.auth.signUp({ email, password })
+            if (error) alert('註冊失敗：' + error.message)
+            else alert('註冊成功！請驗證信箱。')
+        }
+
+        async function handleSignIn() {
+            const email = document.getElementById('email').value
+            const password = document.getElementById('password').value
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password })
+            if (error) alert('登入失敗：' + error.message)
+            else alert('登入成功！')
+        }
+
+        async function handleSignOut() {
+            await supabaseClient.auth.signOut()
+            alert('已登出')
+            // 重整頁面確保狀態乾淨
+            location.reload(); 
+        }
+
+        // --- 2. 資料操作邏輯 ---
+
+        // 讀取文章
+        async function fetchPosts() {
+            const container = document.getElementById('post-container')
+            
+            const { data, error } = await supabaseClient
+                .from('posts')
+                .select('id, title, content, image_url, created_at') // 多抓 created_at
+                .order('created_at', { ascending: false })
+
+            if (error) {
+                container.innerText = '錯誤：' + error.message
+            } else {
+                if (data.length === 0) {
+                    container.innerText = '目前沒有文章，快來發第一篇吧！';
+                    return;
+                }
+                container.innerHTML = data.map(post => renderPostHTML(post)).join('')
+            }
+        }
+
+        // 發佈文章 (含圖片上傳)
+        async function createPost() {
+            const titleInput = document.getElementById('post-title');
+            const contentInput = document.getElementById('post-content');
+            const fileInput = document.getElementById('post-image');
+            const btn = document.getElementById('btn-publish');
+            
+            // 簡單驗證
+            if (!titleInput.value) return alert('請輸入標題');
+
+            // 1. 鎖定按鈕
+            btn.disabled = true;
+            btn.innerText = '發布中...';
+
+            try {
+                let publicUrl = null;
+                const file = fileInput.files[0];
+
+                // 2. 如果有圖片，先上傳
+                if (file) {
+                    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`; // 淨化檔名
+                    const { error: uploadError } = await supabaseClient.storage
+                        .from('images').upload(fileName, file);
+
+                    if (uploadError) throw new Error('圖片上傳失敗: ' + uploadError.message);
+
+                    const { data } = supabaseClient.storage.from('images').getPublicUrl(fileName);
+                    publicUrl = data.publicUrl;
+                }
+
+                // 3. 寫入資料庫
+                const { error: dbError } = await supabaseClient.from('posts').insert([
+                    { title: titleInput.value, content: contentInput.value, image_url: publicUrl }
+                ]);
+
+                if (dbError) throw new Error(dbError.message);
+
+                alert('🎉 發佈成功！');
+                
+                // 清空表單
+                titleInput.value = '';
+                contentInput.value = '';
+                fileInput.value = '';
+
+            } catch (err) {
+                alert('發生錯誤：' + err.message);
+            } finally {
+                // 4. 恢復按鈕
+                btn.disabled = false;
+                btn.innerText = '發佈文章';
+            }
+        }
+
+        // 刪除文章
+        async function deletePost(postId) {
+            if (!confirm('確定要刪除這篇文章嗎？')) return;
+
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user) return alert('請先登入！');
+
+            const { error, count } = await supabaseClient
+                .from('posts')
+                .delete({ count: 'exact' })
+                .eq('id', postId);
+
+            if (error) alert('錯誤：' + error.message);
+            else if (count === 0) alert('刪除失敗：權限不足（你不是作者）');
+            else {
+                alert('刪除成功');
+                // 前端介面直接移除該元素 (不用重整)
+                const el = document.getElementById(`post-${postId}`);
+                if (el) el.remove();
+            }
+        }
+
+        // --- 3. 輔助函數與 Realtime ---
+
+        // 統一產出 HTML 的模板函數
+        function renderPostHTML(post, isNew = false) {
+            const imgHtml = post.image_url 
+                ? `<img src="${post.image_url}" style="max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px;">` 
+                : '';
+            
+            const badge = isNew ? '<span class="new-badge">(新!)</span>' : '';
+            
+            // 加入 id 屬性方便刪除時定位
+            return `
+                <div id="post-${post.id}" class="post-card">
+                    <h3>${post.title} ${badge}</h3>
+                    <p style="white-space: pre-wrap;">${post.content}</p>
+                    ${imgHtml}
+                    <div style="margin-top: 15px;">
+                        <button onclick="deletePost('${post.id}')" style="font-size: 0.8em; padding: 5px 10px;">🗑 刪除</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Realtime 監聽
+        function setupRealtime() {
+            supabaseClient
+                .channel('public:posts')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, (payload) => {
+                    console.log('Realtime:', payload);
+                    const container = document.getElementById('post-container');
+                    // 插入到最上方
+                    container.insertAdjacentHTML('afterbegin', renderPostHTML(payload.new, true));
+                })
+                .subscribe();
+        }
+
+        // --- 4. 程式入口 ---
+        (async () => {
+            setupRealtime();
+            await fetchPosts();
+        })();
+
+    </script>
+</body>
+</html>
