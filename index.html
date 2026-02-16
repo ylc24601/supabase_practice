@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的 Supabase 部落格</title>
+    <title>我的精簡版 Supabase 部落格</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -14,6 +14,11 @@
             margin-bottom: 20px;
             background-color: var(--background-alt);
         }
+        .comment-item {
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+            font-size: 0.9em;
+        }
         .new-badge { color: red; font-size: 0.8em; font-weight: bold; margin-left: 10px; }
     </style>
 </head>
@@ -22,14 +27,13 @@
     <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px;">
         <h1>我的 Supabase 部落格 🚀</h1>
         <div id="auth-ui">
-            <span id="user-display" style="margin-right: 10px; font-weight: bold;">讀取中...</span>
+            <span id="user-display" style="margin-right: 10px; font-weight: bold;">檢查身分中...</span>
         </div>
     </header>
 
     <details id="auth-forms">
-        <summary>點此展開：登入或註冊</summary>
+        <summary>👤 帳號登入 / 註冊</summary>
         <div style="margin-top: 20px; padding: 20px; border: 1px dashed #ccc;">
-            <h3>帳號管理</h3>
             <input type="email" id="email" placeholder="電子信箱">
             <input type="password" id="password" placeholder="密碼">
             <br>
@@ -40,13 +44,10 @@
     </details>
 
     <details id="profile-section" style="display: none; margin-bottom: 20px;">
-        <summary>👤 修改我的個人資料</summary>
+        <summary>⚙️ 修改個人暱稱</summary>
         <div style="padding: 15px; border: 1px solid #ddd; margin-top: 10px;">
-            <label>暱稱：</label>
             <input type="text" id="edit-username" placeholder="輸入你想顯示的名字">
-            <label>頭像圖片：</label>
-            <input type="file" id="edit-avatar" accept="image/*">
-            <button id="btn-update-profile" onclick="updateProfile()" style="margin-top: 10px;">儲存修改</button>
+            <button id="btn-update-profile" onclick="updateProfile()">儲存修改</button>
         </div>
     </details>
 
@@ -56,7 +57,7 @@
         <h2>✏️ 發佈新文章</h2>
         <input type="text" id="post-title" placeholder="文章標題">
         <textarea id="post-content" placeholder="寫點什麼..." rows="4"></textarea>
-        <label for="post-image">上傳圖片：</label>
+        <label>上傳圖片：</label>
         <input type="file" id="post-image" accept="image/*">
         <button id="btn-publish" onclick="createPost()">發佈文章</button>
     </div>
@@ -64,36 +65,31 @@
     <hr>
 
     <h2>📖 最新文章</h2>
-    <div id="post-container">載入中...</div>
+    <div id="post-container">載入文章中...</div>
 
     <script>
+        // --- 初始化 Supabase ---
         const SUPABASE_URL = 'https://llhiisczjckqcwdvugih.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_2y3NauD1KSlPs4U1k5D9KA_hD9OVGXj';
+        // 請確保這裡更換成你專案中長度以 eyJ 開頭的 anon key
+        const SUPABASE_KEY = 'YOUR_LONG_ANON_KEY_HERE'; 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // --- 1. 身分驗證與狀態監聽 ---
         supabaseClient.auth.onAuthStateChange(async (event, session) => {
-            console.log("--- 監控開始 --- 事件:", event);
             const profileSection = document.getElementById('profile-section');
             const userDisplay = document.getElementById('user-display');
             const authForms = document.getElementById('auth-forms');
             
             if (session && session.user) {
-                console.log("✅ 偵測到登入身分:", session.user.email);
-                if (profileSection) profileSection.style.display = 'block'; 
-                if (authForms) authForms.removeAttribute('open'); 
+                profileSection.style.display = 'block'; 
+                if(authForms) authForms.removeAttribute('open'); 
 
                 try {
-                    // 每次狀態改變（包含重整），都去資料庫抓最新資料
                     const { data, error } = await supabaseClient
                         .from('profiles')
                         .select('username')
                         .eq('id', session.user.id)
                         .maybeSingle();
-
-                    if (error) throw error;
-
-                    console.log("🔍 資料庫回傳的最新暱稱:", data ? data.username : "無資料");
 
                     if (data && data.username) {
                         document.getElementById('edit-username').value = data.username;
@@ -102,15 +98,12 @@
                         userDisplay.innerText = `👋 哈囉，${session.user.email} (尚未設定暱稱)`;
                     }
                 } catch (err) {
-                    console.warn("讀取 Profile 失敗:", err.message);
                     userDisplay.innerText = `👋 哈囉，${session.user.email}`;
                 }
             } else {
-                console.log("❌ 目前為登出狀態");
-                if (profileSection) profileSection.style.display = 'none';
+                profileSection.style.display = 'none';
                 userDisplay.innerText = '尚未登入';
             }
-            // 無論登入與否，都要抓文章
             fetchPosts();
         });
 
@@ -134,7 +127,7 @@
             location.reload(); 
         }
 
-        // --- 2. 資料操作 ---
+        // --- 2. 文章操作 ---
         async function fetchPosts() {
             const container = document.getElementById('post-container');
             const { data, error } = await supabaseClient
@@ -142,10 +135,10 @@
                 .select('id, title, content, image_url, created_at')
                 .order('created_at', { ascending: false });
 
-            if (error) container.innerText = '錯誤：' + error.message;
+            if (error) container.innerText = '載入文章失敗：' + error.message;
             else {
-                if (data.length === 0) container.innerText = '目前沒有文章。';
-                else container.innerHTML = data.map(post => renderPostHTML(post)).join('');
+                container.innerHTML = data.length === 0 ? '目前沒有文章' : 
+                    data.map(post => renderPostHTML(post)).join('');
             }
         }
 
@@ -156,95 +149,47 @@
             const btn = document.getElementById('btn-publish');
             
             if (!titleInput.value) return alert('請輸入標題');
-            btn.disabled = true;
+            btn.disabled = true; btn.innerText = '上傳中...';
 
             try {
                 let publicUrl = null;
                 const file = fileInput.files[0];
                 if (file) {
-                    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
-                    await supabaseClient.storage.from('images').upload(fileName, file);
-                    const { data } = supabaseClient.storage.from('images').getPublicUrl(fileName);
-                    publicUrl = data.publicUrl;
+                    const fileName = `${Date.now()}_${file.name}`;
+                    const { error: uploadError } = await supabaseClient.storage.from('images').upload(fileName, file);
+                    if (uploadError) throw uploadError; // 修正評論第 4 點：檢查上傳錯誤
+                    
+                    const { data: urlData } = supabaseClient.storage.from('images').getPublicUrl(fileName);
+                    publicUrl = urlData.publicUrl;
                 }
-                const { error } = await supabaseClient.from('posts').insert([
+                const { error: dbError } = await supabaseClient.from('posts').insert([
                     { title: titleInput.value, content: contentInput.value, image_url: publicUrl }
                 ]);
-                if (error) throw error;
+                if (dbError) throw dbError;
                 alert('發佈成功！');
                 titleInput.value = ''; contentInput.value = ''; fileInput.value = '';
+                fetchPosts();
             } catch (err) {
-                alert('錯誤：' + err.message);
+                alert('發佈失敗：' + err.message);
             } finally {
-                btn.disabled = false;
+                btn.disabled = false; btn.innerText = '發佈文章';
             }
         }
 
         async function deletePost(postId) {
-            if (!confirm('確定刪除？')) return;
+            if (!confirm('確定刪除文章嗎？')) return;
             const { error } = await supabaseClient.from('posts').delete().eq('id', postId);
             if (error) alert('刪除失敗（權限不足）：' + error.message);
-            else {
-                alert('刪除成功');
-                fetchPosts(); // 簡單起見直接重新抓取
-            }
+            else fetchPosts();
         }
 
-        // --- 3. 留言功能 ---
+        // --- 3. 留言系統 ---
         function renderPostHTML(post) {
             const imgHtml = post.image_url ? `<img src="${post.image_url}" style="max-width: 100%; border-radius: 8px; margin-top: 10px;">` : '';
             return `
-                <div id="post-${post.id}" class="post-card">
+                <div class="post-card">
                     <h3>${post.title}</h3>
                     <p style="white-space: pre-wrap;">${post.content}</p>
                     ${imgHtml}
                     <hr style="opacity: 0.3;">
-                    <button onclick="toggleComments('${post.id}')">💬 留言</button>
-                    <button onclick="deletePost('${post.id}')" style="background: none; color: gray;">🗑 刪除</button>
-                    <div id="comments-${post.id}" style="display: none; margin-top: 15px;">
-                        <div id="comment-list-${post.id}">載入中...</div>
-                        <input type="text" id="input-comment-${post.id}" placeholder="寫下留言...">
-                        <button onclick="submitComment('${post.id}')">送出</button>
-                    </div>
-                </div>`;
-        }
-
-        async function toggleComments(postId) {
-            const section = document.getElementById(`comments-${postId}`);
-            const list = document.getElementById(`comment-list-${postId}`);
-            if (section.style.display === 'none') {
-                section.style.display = 'block';
-                const { data, error } = await supabaseClient
-                    .from('comments')
-                    .select('content, created_at, profiles(username)')
-                    .eq('post_id', postId);
-                
-                if (error) list.innerText = '載入失敗';
-                else {
-                    list.innerHTML = data.length === 0 ? '<small>暫無留言</small>' : 
-                        data.map(c => `<div><strong>${c.profiles?.username || '匿名'}:</strong> ${c.content}</div>`).join('');
-                }
-            } else section.style.display = 'none';
-        }
-
-        async function submitComment(postId) {
-            const input = document.getElementById(`input-comment-${postId}`);
-            if (!input.value) return;
-            const { error } = await supabaseClient.from('comments').insert([{ content: input.value, post_id: postId }]);
-            if (error) alert('失敗：' + error.message);
-            else { input.value = ''; toggleComments(postId); toggleComments(postId); }
-        }
-
-        async function updateProfile() {
-            const username = document.getElementById('edit-username').value;
-            const { data: { user } } = await supabaseClient.auth.getUser();
-            const { error } = await supabaseClient.from('profiles').update({ username }).eq('id', user.id);
-            if (error) alert('更新失敗');
-            else { alert('更新成功！'); location.reload(); }
-        }
-
-        // 啟動
-        fetchPosts();
-    </script>
-</body>
-</html>
+                    <button onclick="toggleComments('${post.id}')">
