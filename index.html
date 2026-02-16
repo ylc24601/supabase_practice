@@ -192,4 +192,70 @@
                     <p style="white-space: pre-wrap;">${post.content}</p>
                     ${imgHtml}
                     <hr style="opacity: 0.3;">
-                    <button onclick="toggleComments('${post.id}')">
+                    <button onclick="toggleComments('${post.id}')">💬 留言</button>
+                    <button onclick="deletePost('${post.id}')" style="background: none; color: gray;">🗑 刪除</button>
+                    <div id="comments-${post.id}" style="display: none; margin-top: 15px;">
+                        <div id="comment-list-${post.id}">載入中...</div>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <input type="text" id="input-comment-${post.id}" placeholder="寫下留言..." style="flex: 1;">
+                            <button onclick="submitComment('${post.id}')">送出</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        async function toggleComments(postId) {
+            const section = document.getElementById(`comments-${postId}`);
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                fetchComments(postId); // 修正評論第 3 點：獨立獲取函數
+            } else {
+                section.style.display = 'none';
+            }
+        }
+
+        async function fetchComments(postId) {
+            const list = document.getElementById(`comment-list-${postId}`);
+            const { data, error } = await supabaseClient
+                .from('comments')
+                .select('content, profiles(username)')
+                .eq('post_id', postId);
+            
+            if (error) list.innerText = '留言載入失敗';
+            else {
+                list.innerHTML = data.length === 0 ? '<small>暫無留言</small>' : 
+                    data.map(c => `<div class="comment-item"><strong>${c.profiles?.username || '匿名'}:</strong> ${c.content}</div>`).join('');
+            }
+        }
+
+        async function submitComment(postId) {
+            const input = document.getElementById(`input-comment(`${postId}`)`);
+            if (!input.value) return;
+            const { error } = await supabaseClient.from('comments').insert([{ content: input.value, post_id: postId }]);
+            if (error) alert('留言失敗：' + error.message);
+            else { input.value = ''; fetchComments(postId); }
+        }
+
+        // --- 4. 個人檔案修改 ---
+        async function updateProfile() {
+            const username = document.getElementById('edit-username').value;
+            const btn = document.getElementById('btn-update-profile');
+            btn.disabled = true;
+
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            const { error } = await supabaseClient.from('profiles').update({ username }).eq('id', user.id);
+            
+            if (error) alert('更新失敗：' + error.message);
+            else {
+                alert('個人資料已更新！');
+                // 直接更新 UI 而不是 location.reload，體驗更順暢
+                document.getElementById('user-display').innerText = `👋 哈囉，${username}`;
+            }
+            btn.disabled = false;
+        }
+
+        // 頁面初次載入
+        fetchPosts();
+    </script>
+</body>
+</html>
